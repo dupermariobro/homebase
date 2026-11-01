@@ -2,7 +2,6 @@ import express from 'express';
 import net from 'node:net';
 import fs from 'node:fs';
 import path from 'node:path';
-import { fileURLToPath } from 'node:url';
 import { getSetting, setSetting } from './db.js';
 import {
   isValidDate,
@@ -35,132 +34,6 @@ export function localToday() {
   return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
 }
 
-// Add whole days to a YYYY-MM-DD string, staying in UTC so it never drifts.
-function addDays(dateStr, n) {
-  return new Date(Date.parse(dateStr + 'T00:00:00Z') + n * 864e5).toISOString().slice(0, 10);
-}
-
-const SERVER_DIR = path.dirname(fileURLToPath(import.meta.url));
-const AMBIENT_HTML = path.join(SERVER_DIR, 'tv-ambient.html');
-const FONTS_DIR = path.join(SERVER_DIR, 'fonts');
-
-// Everything the TV ambient screen shows, in one read-only payload (one request + the WS
-// 'changed' feed is far lighter on a Pi 3B / TV browser than a dozen separate calls).
-async function ambientData(db, fetchImpl) {
-  const today = localToday();
-  const horizon = addDays(today, 14);
-  const publicP = (p) => {
-    const { ical_url, ntfy_topic, ...rest } = p;
-    return rest;
-  };
-  const bal = balances(db);
-  const streak = streaks(db, today);
-  const people = db
-    .prepare('SELECT * FROM people ORDER BY sort_order, id')
-    .all()
-    .map((p) => ({ ...publicP(p), points: bal[p.id]?.balance ?? 0, streak: streak[p.id] || 0 }));
-
-  // Today's chores → per-person progress (skip calendar-only people).
-  const due = choresForDate(db, today);
-  const byPerson = people
-    .filter((p) => p.role !== 'calendar')
-    .map((p) => {
-      const mine = due.filter((c) => c.person_id === p.id);
-      return {
-        person_id: p.id,
-        name: p.name,
-        color: p.color,
-        total: mine.length,
-        done: mine.filter((c) => c.done).length,
-        points: p.points,
-        streak: p.streak,
-        // the actual chores due today, so the screen can list them (not just a progress bar)
-        items: mine.map((c) => ({ title: c.title, icon: c.icon, points: c.points, done: c.done })),
-      };
-    })
-    .filter((p) => p.total > 0 || p.points > 0);
-
-  const events = [
-    ...eventsBetween(db, today, horizon).map((e) => ({ ...e, source: 'ical' })),
-    ...expandLocalEvents(db, today, horizon),
-  ].sort((a, b) => b.all_day - a.all_day || a.start.localeCompare(b.start));
-  // "Today" includes events that start today and multi-day events still running today.
-  // All-day iCal end dates are exclusive (end = the morning after), so they need end > today;
-  // timed events need end >= today.
-  // Timed events are stored in UTC: a 7pm Central event is already "tomorrow" in its ISO string, so take the
-  // calendar day in this server's local time. All-day events are plain dates and stay as they are.
-  const p2 = (n) => String(n).padStart(2, '0');
-  const lday = (v, allDay) => {
-    if (allDay) return String(v).slice(0, 10);
-    const d = new Date(v);
-    return `${d.getFullYear()}-${p2(d.getMonth() + 1)}-${p2(d.getDate())}`;
-  };
-  const isToday = (e) => {
-    const s = lday(e.start, e.all_day), en = lday(e.end, e.all_day);
-    if (s === today) return true;
-    if (s < today) return e.all_day ? en > today : en >= today;
-    return false;
-  };
-  // The same event often lives on more than one calendar (a parent's + the shared Family one).
-  // Collapse those so the screen shows it once.
-  const dedupe = (list) => {
-    const seen = new Set();
-    return list.filter((e) => {
-      const k = e.all_day + '|' + e.start + '|' + String(e.title).toLowerCase().trim();
-      if (seen.has(k)) return false;
-      seen.add(k);
-      return true;
-    });
-  };
-
-  const meals = db
-    .prepare('SELECT date, title FROM meals WHERE date >= ? AND date <= ? ORDER BY date')
-    .all(today, addDays(today, 6));
-  const notes = db
-    .prepare('SELECT * FROM notes WHERE expires_on IS NULL OR expires_on >= ? ORDER BY id DESC LIMIT 12')
-    .all(today);
-  const countdowns = db
-    .prepare('SELECT title, date, icon FROM countdowns WHERE date >= ? ORDER BY date LIMIT 8')
-    .all(today)
-    .map((c) => ({ ...c, days: Math.round((Date.parse(c.date + 'T00:00:00Z') - Date.parse(today + 'T00:00:00Z')) / 864e5) }));
-
-  // Next birthday for each person who has one, within the year ahead.
-  const birthdays = people
-    .filter((p) => p.birthday)
-    .map((p) => {
-      const [, mo, da] = String(p.birthday).split('-');
-      let next = `${today.slice(0, 4)}-${mo}-${da}`;
-      if (next < today) next = `${Number(today.slice(0, 4)) + 1}-${mo}-${da}`;
-      const days = Math.round((Date.parse(next + 'T00:00:00Z') - Date.parse(today + 'T00:00:00Z')) / 864e5);
-      return { name: p.name, color: p.color, date: next, days };
-    })
-    .filter((b) => b.days <= 60)
-    .sort((a, b) => a.days - b.days);
-
-  let weather = null;
-  try {
-    weather = await getWeather(db, fetchImpl);
-  } catch {
-    /* weather is optional */
-  }
-
-  return {
-    now: { date: today, iso: new Date().toISOString() },
-    settings: { location_name: getSetting(db, 'location_name'), cents_per_point: Number(getSetting(db, 'cents_per_point', 0)) },
-    weather,
-    people,
-    chores: byPerson,
-    events: {
-      today: dedupe(events.filter(isToday)),
-      // Only events that start on a future day — never a past one whose tail still overlaps today.
-      upcoming: dedupe(events.filter((e) => lday(e.start, e.all_day) > today)).slice(0, 8),
-    },
-    meals,
-    notes,
-    countdowns,
-    birthdays,
-  };
-}
 
 const ROLES = ['adult', 'child', 'calendar'];
 
@@ -663,22 +536,6 @@ export function createApp({ db, broadcast = () => {}, fetchImpl = fetch, staticD
       res.json({ ok: true });
     })
   );
-
-  // --- TV ambient screen (read-only idle display for the wall tablet / TVs) ----
-  // Self-hosted fonts (IBM Plex + Shippori Mincho), so the screen needs no network
-  // round-trip on a Pi / TV browser.
-  app.use('/tv/fonts', express.static(FONTS_DIR, { maxAge: '30d', immutable: true }));
-  app.get(
-    '/api/tv/ambient',
-    wrap(async (_req, res) => {
-      res.set('Cache-Control', 'no-store');
-      res.json(await ambientData(db, fetchImpl));
-    })
-  );
-  app.get('/tv/ambient', (_req, res) => {
-    res.set('Cache-Control', 'no-cache');
-    res.sendFile(AMBIENT_HTML);
-  });
 
   // --- static client ----------------------------------------------------
   if (staticDir && fs.existsSync(staticDir)) {

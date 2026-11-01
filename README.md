@@ -9,7 +9,7 @@ your family's data stays in one SQLite file on your machine.
 chores with points, weekly rotation, parent approval, streaks, and optional allowance · rewards ·
 one-off to-dos · meal plan + recipe box (import from recipe sites) · shopping lists · sticky notes ·
 countdowns + birthdays · photo screensaver · phone reminders via ntfy · optional ✨ AI quick-add
-(type or snap a photo of a school flyer → events, chores, groceries) · an ambient TV view at `/tv/ambient`.
+(type or snap a photo of a school flyer → events, chores, groceries).
 
 ## Quick start
 
@@ -125,10 +125,6 @@ npm run build   # rebuild the client after UI changes
 
 - Data: `data/family.db` (SQLite). Back it up by copying the file (or the whole `data/` folder).
 - Tablets reload themselves nightly at 3 am to pick up new builds.
-
-## Credits
-
-Fonts: IBM Plex and Shippori Mincho, both under the SIL Open Font License 1.1 (see `server/fonts/`).
 
 ## License
 

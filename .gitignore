@@ -8,3 +8,11 @@ ntfy/server.yml
 ntfy/ntfy-server
 .DS_Store
 *.log
+# Keep personal media out of the repo
+demo/
+*.mp4
+*.mov
+*.webm
+*.gif
+screenshots/
+docs/media/

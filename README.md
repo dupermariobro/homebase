@@ -38,11 +38,29 @@ To keep it running in the background, see `scripts/homebase.plist.example` (macO
    *Integrate calendar* → copy **Secret address in iCal format** → paste it into that person's profile.
    Any iCal (.ics) URL works (iCloud public calendars, Outlook, Fastmail…). Events refresh every 5 minutes.
 4. **Family calendar:** Settings → Family (calendar only) → paste the shared calendar's iCal address.
-5. **AI quick-add (optional):** put an OpenAI API key in `.env` as `OPENAI_API_KEY`, then restart.
-   Uses `gpt-5-mini` by default (a fraction of a cent per quick-add); set `OPENAI_MODEL` to change it.
+5. **AI quick-add (optional):** bring your own AI provider in `.env`, then restart (see *AI providers* below).
 6. **Reminders (optional):** Settings → Reminders → your ntfy server; then each person's profile → ntfy topic → Test.
    See `ntfy/server.example.yml` to run a private ntfy server.
 7. **Chores and rewards:** edit the starter set under Chores → *Manage chores*.
+
+## AI providers
+
+AI quick-add and recipe import work with any service that speaks the OpenAI Chat Completions API.
+Set these in `.env` and restart:
+
+| Provider | `OPENAI_BASE_URL` | `OPENAI_API_KEY` | `OPENAI_MODEL` (example) |
+|---|---|---|---|
+| OpenAI (default) | *(leave unset)* | your key | `gpt-5-mini` (default, a fraction of a cent per quick-add) |
+| OpenRouter | `https://openrouter.ai/api/v1` | your key | `openai/gpt-5-mini` |
+| Ollama (local, free) | `http://localhost:11434/v1` | *(leave unset)* | `qwen2.5vl:7b` |
+| LM Studio (local, free) | `http://localhost:1234/v1` | *(leave unset)* | the model you loaded |
+
+- The model must support **structured (JSON schema) output**. Photo quick-add also needs a model that can
+  **read images**. Small local models handle typed quick-adds well; flyers and handwriting need a capable vision model.
+- **Privacy:** quick-add sends what you type or photograph, plus your household's names, roles and birthdays (so
+  "Riley's dentist Thursday" lands on the right calendar), to the provider you choose. A local model keeps all of
+  it in your house.
+- A ChatGPT subscription doesn't include API access; use an API key from the provider instead.
 
 ## Set up the wall tablet
 
@@ -89,7 +107,7 @@ Homebase is built for a trusted home network. Read this before exposing anything
 - **Outbound fetches.** Recipe import only fetches public web addresses: private and LAN addresses,
   LAN-only names and redirects into your network are refused, and pages are size-capped.
   Calendar (iCal) addresses can only be set with the PIN.
-- **Secrets stay server-side.** The OpenAI key and ntfy token live only in `.env`. The ntfy token is
+- **Secrets stay server-side.** The AI API key and ntfy token live only in `.env`. The ntfy token is
   only ever sent to `HOMEBASE_NTFY_URL`. Calendar addresses and ntfy topics are never returned to the
   tablet. Don't put credentials inside the ntfy server address in Settings, because it is shown there.
 - **Photos.** Uploads must be real JPEG, PNG, WebP or HEIC files. On macOS, large and HEIC photos are

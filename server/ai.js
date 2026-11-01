@@ -1,14 +1,18 @@
-// OpenAI-backed parsing for quick-add and recipe import.
-// Uses Chat Completions with a strict JSON schema so replies are always well-formed.
+// AI parsing for quick-add and recipe import, through any OpenAI-compatible Chat Completions
+// API: OpenAI by default, or OPENAI_BASE_URL for OpenRouter, Groq, Ollama, LM Studio, etc.
+// Uses a strict JSON schema so replies are always well-formed.
 
-const API_URL = 'https://api.openai.com/v1/chat/completions';
+export function aiBaseUrl() {
+  return (process.env.OPENAI_BASE_URL || 'https://api.openai.com/v1').replace(/\/+$/, '');
+}
 
 export function aiModel() {
   return process.env.OPENAI_MODEL || 'gpt-5-mini';
 }
 
+/** On with an API key, or with a custom base URL alone (local servers usually need no key). */
 export function aiEnabled() {
-  return Boolean(process.env.OPENAI_API_KEY);
+  return Boolean(process.env.OPENAI_API_KEY || process.env.OPENAI_BASE_URL);
 }
 
 const nullable = (type) => ({ type: [type, 'null'] });
@@ -61,7 +65,7 @@ const RECIPE_SCHEMA = {
 };
 
 async function complete(fetchImpl, messages, schema) {
-  if (!aiEnabled()) throw Object.assign(new Error('AI is not set up — add OPENAI_API_KEY to .env'), { status: 503 });
+  if (!aiEnabled()) throw Object.assign(new Error('AI is not set up — add OPENAI_API_KEY (or OPENAI_BASE_URL) to .env'), { status: 503 });
   const model = aiModel();
   const body = { model, messages, response_format: { type: 'json_schema', json_schema: schema } };
   // gpt-5 family models reason by default; minimal effort keeps quick-add fast and cheap.
@@ -69,9 +73,12 @@ async function complete(fetchImpl, messages, schema) {
   if (effort) body.reasoning_effort = effort;
 
   const call = (payload) =>
-    fetchImpl(API_URL, {
+    fetchImpl(`${aiBaseUrl()}/chat/completions`, {
       method: 'POST',
-      headers: { 'content-type': 'application/json', authorization: `Bearer ${process.env.OPENAI_API_KEY}` },
+      headers: {
+        'content-type': 'application/json',
+        ...(process.env.OPENAI_API_KEY ? { authorization: `Bearer ${process.env.OPENAI_API_KEY}` } : {}),
+      },
       body: JSON.stringify(payload),
       signal: AbortSignal.timeout(60000),
     });
@@ -88,14 +95,24 @@ async function complete(fetchImpl, messages, schema) {
   }
   if (!res.ok) {
     const detail = await res.text().catch(() => '');
-    const msg = res.status === 401 ? 'OpenAI rejected the API key' : `AI request failed (${res.status})`;
-    console.error('OpenAI error', res.status, detail.slice(0, 500));
+    const msg = res.status === 401 ? 'The AI provider rejected the API key' : `AI request failed (${res.status})`;
+    console.error('AI provider error', res.status, detail.slice(0, 500));
     throw Object.assign(new Error(msg), { status: 502 });
   }
   const data = await res.json();
   const choice = data.choices?.[0]?.message;
   if (choice?.refusal) throw Object.assign(new Error('The AI declined to read that'), { status: 422 });
-  return JSON.parse(choice.content);
+  return parseJsonReply(choice?.content);
+}
+
+/** Some local models wrap JSON in a ```json fence even when asked for strict JSON. */
+export function parseJsonReply(content) {
+  const text = String(content || '').trim().replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '');
+  try {
+    return JSON.parse(text);
+  } catch {
+    throw Object.assign(new Error('The AI reply wasn’t valid JSON — try a model that supports structured output'), { status: 502 });
+  }
 }
 
 export function quickAddPrompt({ today, weekday, timezone, people, lists }) {

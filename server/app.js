@@ -616,7 +616,7 @@ export function createApp({ db, broadcast = () => {}, fetchImpl = fetch, staticD
       reminder_minutes: Number(getSetting(db, 'reminder_minutes', 30)),
       ntfy_url: getSetting(db, 'ntfy_url', ''),
       ntfy_public_url: getSetting(db, 'ntfy_public_url', ''),
-      ai_enabled: Boolean(process.env.OPENAI_API_KEY),
+      ai_enabled: aiEnabled(),
       calendar_status: JSON.parse(getSetting(db, 'calendar_status', '{}')),
       pinSet: pinIsSet(db),
     });

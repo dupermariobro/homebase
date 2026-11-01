@@ -356,7 +356,7 @@ export function registerExtras(app, { db, parent, changed, wrap, send, fetchImpl
     wrap(async (req, res) => {
       const { url, text } = req.body;
       if (url && !isPublicHttpUrl(url)) return res.status(400).json({ error: 'Use a regular web link (http or https)' });
-      if (!aiEnabled()) return res.status(503).json({ error: 'AI is not set up — add OPENAI_API_KEY to .env' });
+      if (!aiEnabled()) return res.status(503).json({ error: 'AI is not set up — add OPENAI_API_KEY (or OPENAI_BASE_URL) to .env' });
       const fetchPage = (u) => fetchPublicText(pageFetch, u, { lookup, dispatcher: recipeAgent });
       const recipe = await extractRecipe(fetchImpl, { url, text, fetchPage });
       res.json({ ...recipe, source_url: url || null });

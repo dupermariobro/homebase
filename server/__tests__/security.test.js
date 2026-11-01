@@ -97,3 +97,24 @@ test('a client blocked while queued is refused when its turn comes, and errors a
   const err = new Promise((resolve) => guard.pace('z', () => { throw new Error('boom'); }, resolve));
   assert.equal((await err).message, 'boom');
 });
+
+test('AI calls go to OPENAI_BASE_URL, with no key header when none is set (local models)', async () => {
+  const { extractRecipe, aiEnabled, parseJsonReply } = await import('../ai.js');
+  process.env.OPENAI_BASE_URL = 'http://127.0.0.1:11434/v1/';
+  delete process.env.OPENAI_API_KEY;
+  const seen = [];
+  const fetchImpl = async (url, opts) => {
+    seen.push({ url, auth: opts.headers.authorization });
+    return Response.json({ choices: [{ message: { content: '```json\n{"title":"Soup","ingredients":[],"instructions":""}\n```' } }] });
+  };
+  try {
+    assert.equal(aiEnabled(), true);
+    const r = await extractRecipe(fetchImpl, { text: 'Soup recipe' });
+    assert.equal(r.title, 'Soup');
+  } finally {
+    delete process.env.OPENAI_BASE_URL;
+  }
+  assert.equal(seen[0].url, 'http://127.0.0.1:11434/v1/chat/completions');
+  assert.equal(seen[0].auth, undefined);
+  assert.throws(() => parseJsonReply('not json'), { status: 502 });
+});

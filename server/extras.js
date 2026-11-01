@@ -6,7 +6,8 @@ import crypto from 'node:crypto';
 import { execFileSync } from 'node:child_process';
 import { isValidDate } from './chores.js';
 import { aiEnabled, aiModel, extractRecipe, parseQuickAdd } from './ai.js';
-import { fetchPublicText, isPublicHttpUrl } from './netguard.js';
+import { fetch as undiciFetch } from 'undici';
+import { fetchPublicText, guardedAgent, isPublicHttpUrl } from './netguard.js';
 
 const TIME_RE = /^([01]\d|2[0-3]):[0-5]\d$/;
 
@@ -316,6 +317,10 @@ export function registerExtras(app, { db, parent, changed, wrap, send, fetchImpl
   app.use('/photos', express.static(dir, { maxAge: '30d', immutable: true, setHeaders: (res) => res.set('X-Content-Type-Options', 'nosniff') }));
 
   // --- recipes ----------------------------------------------------------------
+  // Real page fetches use undici's own fetch with the pinned agent (Node's built-in fetch
+  // doesn't decode bodies through a dispatcher from the undici package). Tests inject fakes.
+  const recipeAgent = guardedAgent();
+  const pageFetch = fetchImpl === globalThis.fetch ? undiciFetch : fetchImpl;
   const recipeOut = (r) => ({ ...r, ingredients: JSON.parse(r.ingredients) });
   const cleanList = (xs) => (Array.isArray(xs) ? xs : []).map((s) => String(s).trim()).filter(Boolean);
   app.get('/api/recipes', (_req, res) => res.json(db.prepare('SELECT * FROM recipes ORDER BY title COLLATE NOCASE').all().map(recipeOut)));
@@ -352,7 +357,7 @@ export function registerExtras(app, { db, parent, changed, wrap, send, fetchImpl
       const { url, text } = req.body;
       if (url && !isPublicHttpUrl(url)) return res.status(400).json({ error: 'Use a regular web link (http or https)' });
       if (!aiEnabled()) return res.status(503).json({ error: 'AI is not set up — add OPENAI_API_KEY to .env' });
-      const fetchPage = (u) => fetchPublicText(fetchImpl, u, { lookup });
+      const fetchPage = (u) => fetchPublicText(pageFetch, u, { lookup, dispatcher: recipeAgent });
       const recipe = await extractRecipe(fetchImpl, { url, text, fetchPage });
       res.json({ ...recipe, source_url: url || null });
     })

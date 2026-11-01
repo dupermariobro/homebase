@@ -59,3 +59,26 @@ test('the ntfy token only goes to the pinned ntfy server', async () => {
   assert.equal(seen[0].auth, 'Bearer tk_test');
   assert.equal(seen[1].auth, undefined);
 });
+
+test('IPv4 hidden inside IPv6 is refused in every spelling', () => {
+  for (const u of ['http://[::ffff:127.0.0.1]/', 'http://[::ffff:7f00:1]/', 'http://[::127.0.0.1]/', 'http://[64:ff9b::a9fe:a9fe]/', 'http://[2002:c0a8:101::1]/']) {
+    assert.equal(isPublicHttpUrl(u), false, u);
+  }
+});
+
+test('the guarded connection refuses a name that resolves privately at connect time', async () => {
+  const { guardedAgent } = await import('../netguard.js');
+  const rebinding = (_h, _o, cb) => cb(null, [{ address: '127.0.0.1', family: 4 }]);
+  await assert.rejects(fetch('http://rebind.example/', { dispatcher: guardedAgent(rebinding) }));
+});
+
+test('a guessing swarm slows PIN checks but never locks the family out', async () => {
+  const { createPinGuard } = await import('../pin.js');
+  const guard = createPinGuard({ perClient: 8, total: 3, slowMs: 30 });
+  for (let i = 0; i < 3; i++) guard.fail(`attacker-${i}`);
+  assert.equal(guard.blocked('tablet'), false);
+  const t0 = Date.now();
+  const ran = await guard.pace(() => 'checked');
+  assert.equal(ran, 'checked');
+  assert.ok(Date.now() - t0 >= 25);
+});

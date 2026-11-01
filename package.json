@@ -14,12 +14,13 @@
     "test": "node --test server/__tests__/*.test.js"
   },
   "engines": {
-    "node": ">=20"
+    "node": ">=22.19"
   },
   "dependencies": {
     "better-sqlite3": "^13.0.3",
     "express": "^5.2.1",
     "ical-expander": "^3.2.0",
+    "undici": "^8.12.3",
     "ws": "^8.22.0"
   },
   "devDependencies": {

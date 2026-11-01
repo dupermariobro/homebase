@@ -24,16 +24,25 @@ export function setPin(db, pin) {
 }
 
 /**
- * Wrong-PIN limiter shared by every PIN check in one app: 8 misses per client and 40 in
- * total per 15 minutes, so neither one client nor many spoofed ones can brute-force it.
+ * Wrong-PIN limiter shared by every PIN check in one app. Each client gets 8 misses per
+ * 15 minutes. Past 40 misses in total (many clients guessing), every PIN check is queued
+ * and slowed to one per `slowMs`, so a guessing swarm crawls while the right PIN still
+ * works for the family. (A hard global lockout would let anyone lock the parents out.)
  */
-export function createPinGuard({ perClient = 8, total = 40, windowMs = 15 * 60 * 1000 } = {}) {
+export function createPinGuard({ perClient = 8, total = 40, windowMs = 15 * 60 * 1000, slowMs = 5000 } = {}) {
   const failures = new Map(); // client → { n, start }
   let all = { n: 0, start: Date.now() };
+  let queue = Promise.resolve();
   const live = (f) => f && Date.now() - f.start < windowMs;
   return {
     blocked(key) {
-      return (live(all) && all.n >= total) || (live(failures.get(key)) && failures.get(key).n >= perClient);
+      return Boolean(live(failures.get(key)) && failures.get(key).n >= perClient);
+    },
+    /** Runs `fn` now, or, while the swarm limit is tripped, in a one-at-a-time slow queue. */
+    pace(fn) {
+      if (!(live(all) && all.n >= total)) return fn();
+      queue = queue.then(() => new Promise((r) => setTimeout(r, slowMs))).then(fn, fn);
+      return queue;
     },
     fail(key) {
       if (!live(all)) all = { n: 0, start: Date.now() };
@@ -52,8 +61,12 @@ export function requirePin(db, guard = createPinGuard(), clientKey = (req) => re
   return (req, res, next) => {
     const key = clientKey(req);
     if (guard.blocked(key)) return res.status(429).json({ error: 'Too many wrong PINs. Wait 15 minutes.' });
-    if (verifyPin(req.get('x-parent-pin'), getSetting(db, 'pin_hash'))) return next();
-    if (req.get('x-parent-pin')) guard.fail(key);
-    res.status(401).json({ error: 'Parent PIN required', needsPin: true });
+    const stored = getSetting(db, 'pin_hash');
+    if (!stored) return next();
+    guard.pace(() => {
+      if (verifyPin(req.get('x-parent-pin'), stored)) return next();
+      if (req.get('x-parent-pin')) guard.fail(key);
+      res.status(401).json({ error: 'Parent PIN required', needsPin: true });
+    });
   };
 }

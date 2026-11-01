@@ -102,3 +102,8 @@ test('wrong PIN guesses are rate limited, even with a forged X-Forwarded-For', a
   }
   assert.equal(last.status, 429);
 });
+
+test("the X-Homebase check can't be dodged with an upper-case path", async () => {
+  const r = await fetch(`${homeUrl}/API/notes`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: '{"text":"x"}' });
+  assert.equal(r.status, 403);
+});

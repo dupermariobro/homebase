@@ -13,7 +13,7 @@ countdowns + birthdays · photo screensaver · phone reminders via ntfy · optio
 
 ## Quick start
 
-Requires Node.js 20 or newer.
+Requires Node.js 22.19 or newer.
 
 ```bash
 git clone <this repo> homebase && cd homebase

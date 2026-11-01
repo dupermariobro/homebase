@@ -226,7 +226,7 @@ export function createApp({ db, broadcast = () => {}, fetchImpl = fetch, staticD
   // Homebase never grants), so this blocks cross-site requests from a family member's browser.
   app.use((req, res, next) => {
     if (!remote && !hostAllowed(req.hostname)) return res.status(403).json({ error: 'Unknown host — add it to HOMEBASE_ALLOWED_HOSTS' });
-    if (req.path.startsWith('/api/') && !['GET', 'HEAD', 'OPTIONS'].includes(req.method) && !req.get('x-homebase')) {
+    if (!['GET', 'HEAD', 'OPTIONS'].includes(req.method) && !req.get('x-homebase')) {
       return res.status(403).json({ error: 'Missing X-Homebase header' });
     }
     next();
@@ -248,9 +248,11 @@ export function createApp({ db, broadcast = () => {}, fetchImpl = fetch, staticD
   app.post('/api/auth/check', (req, res) => {
     const key = clientKey(req);
     if (pinGuard.blocked(key)) return res.status(429).json({ error: 'Too many wrong PINs. Wait 15 minutes.' });
-    const ok = verifyPin(req.body.pin, getSetting(db, 'pin_hash'));
-    if (!ok) pinGuard.fail(key);
-    res.json({ ok });
+    pinGuard.pace(() => {
+      const ok = verifyPin(req.body.pin, getSetting(db, 'pin_hash'));
+      if (!ok) pinGuard.fail(key);
+      res.json({ ok });
+    });
   });
 
   // --- away-from-home devices ---------------------------------------------------

@@ -287,10 +287,10 @@ function AwayFromHome() {
         <IconWorld size={20} /> Away from home
       </h3>
       {!data.publicUrl ? (
-        <p className="muted small">Not turned on on this Mac yet.</p>
+        <p className="muted small">Not turned on yet. Set HOMEBASE_PUBLIC_URL in the .env file (see the README).</p>
       ) : (
         <>
-          <p className="muted small">Linked phones can use Homebase from anywhere — no Tailscale needed. Everyone else just sees a locked page.</p>
+          <p className="muted small">Linked phones can use Homebase from anywhere — no VPN app needed. Everyone else just sees a locked page.</p>
           <div className="people-list">
             {data.devices.length === 0 && <p className="muted small">No phones linked yet.</p>}
             {data.devices.map((d) => (
@@ -370,7 +370,7 @@ function Preferences({ settings }) {
           <IconSparkles size={20} /> AI quick-add
         </h3>
         <p className="small muted">
-          {settings.ai_enabled ? 'On — tap ✨ on any screen.' : 'Off. Add an OpenAI API key to the .env file on the Mac to turn it on.'}
+          {settings.ai_enabled ? 'On — tap ✨ on any screen.' : 'Off. Add an AI provider to the .env file on the Homebase computer to turn it on (see the README).'}
         </p>
         <div className="form-actions">
           <button className="btn primary">Save</button>

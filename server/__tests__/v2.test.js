@@ -218,7 +218,7 @@ test('reminders: event heads-up once, family events to adults, chore nudge for k
   assert.ok(posted.every((p) => p.url.startsWith('http://ntfy.test/hb-')));
 });
 
-test('HEIC uploads are converted to JPEG on the Mac', { skip: process.platform !== 'darwin' }, async () => {
+test('HEIC uploads are converted to JPEG on macOS', { skip: process.platform !== 'darwin' }, async () => {
   const { execFileSync } = await import('node:child_process');
   const src = path.join(photoDir, 'src.png');
   const heic = path.join(photoDir, 'src.heic');

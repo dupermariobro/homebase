@@ -1,7 +1,7 @@
 // Shrink photos on the device before upload: phone cameras produce 5–12 MB files,
 // and the tablet only needs ~1920px. Browsers differ in what they can decode
 // (notably HEIC and createImageBitmap options on Safari), so decoding falls back
-// step by step; if nothing works the caller uploads the original and the Mac converts it.
+// step by step; if nothing works the caller uploads the original and the server converts it.
 
 async function decode(file) {
   try {

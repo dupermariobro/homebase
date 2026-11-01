@@ -16,7 +16,7 @@ function guessType(file) {
   return /\.hei[cf]$/i.test(file.name) ? 'image/heic' : '';
 }
 
-/** Shrink on the phone when possible; otherwise send the original for the Mac to convert. */
+/** Shrink on the phone when possible; otherwise send the original for the server to convert. */
 async function uploadOne(file, cancelSignal) {
   let body;
   let type = 'image/jpeg';
@@ -43,7 +43,7 @@ async function uploadOne(file, cancelSignal) {
       if (cancelSignal.aborted) throw Object.assign(new Error('Cancelled'), { cancelled: true });
       throw new Error('Timed out — the connection to Homebase is too slow or dropped');
     }
-    if (err instanceof TypeError) throw new Error('Can’t reach Homebase — check Wi-Fi or Tailscale');
+    if (err instanceof TypeError) throw new Error('Can’t reach Homebase — check the Wi-Fi connection');
     throw err;
   } finally {
     clearTimeout(timer);

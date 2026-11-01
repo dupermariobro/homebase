@@ -11,37 +11,126 @@ one-off to-dos · meal plan + recipe box (import from recipe sites) · shopping 
 countdowns + birthdays · photo screensaver · phone reminders via ntfy · optional ✨ AI quick-add
 (type or snap a photo of a school flyer → events, chores, groceries).
 
-## Quick start
+## Getting started
 
-Requires Node.js 22.19 or newer.
+Setup takes about 15 minutes. You need:
+
+- **An always-on computer at home** to run Homebase: a Mac, a Linux box or Raspberry Pi 4/5, or a NAS
+  that runs Node. It must stay on and on your home network.
+- **Node.js 22.19 or newer** on that computer. Check with `node --version`; install it from
+  [nodejs.org](https://nodejs.org) (or `brew install node` on a Mac).
+- **Git** (`git --version`; on a Mac, `xcode-select --install` provides it).
+- **A tablet** (iPad, Android or Fire) on the same Wi-Fi, for the wall.
+
+### 1. Download and install
+
+On the always-on computer, open a terminal and run:
 
 ```bash
-git clone <this repo> homebase && cd homebase
-npm run setup          # installs server + client dependencies
-npm run build          # builds the tablet UI
-cp .env.example .env   # optional: AI key, ntfy token, ports
-npm start              # http://localhost:4830
+git clone https://github.com/dupermariobro/homebase.git
+cd homebase
+npm run setup
+npm run build
 ```
 
-Open `http://<this-computer's-LAN-IP>:4830` on the tablet. The first run seeds a **sample family**
-(Alex, Sam, Jordan, Riley, Casey) with starter chores and rewards so the board isn't empty;
-rename, recolor or delete them in **Settings**.
+`npm run setup` installs everything (server and tablet app); `npm run build` builds the tablet app.
+On a Raspberry Pi, if setup fails while building `better-sqlite3`, run
+`sudo apt install -y build-essential python3` and try again.
 
-To keep it running in the background, see `scripts/homebase.plist.example` (macOS launchd) or
-`scripts/homebase.service.example` (Linux systemd).
+### 2. (Optional) Settings file
 
-## First-time setup (in the app → Settings)
+Everything works without it. To add AI quick-add, phone reminders or away-from-home access later:
 
-1. **Set a parent PIN.** Until you do, anyone on your network can change settings (see Security).
-2. **Weather:** search your city.
-3. **Calendars:** for each person, in Google Calendar on the web → ⚙ Settings → pick the calendar →
-   *Integrate calendar* → copy **Secret address in iCal format** → paste it into that person's profile.
-   Any iCal (.ics) URL works (iCloud public calendars, Outlook, Fastmail…). Events refresh every 5 minutes.
-4. **Family calendar:** Settings → Family (calendar only) → paste the shared calendar's iCal address.
-5. **AI quick-add (optional):** bring your own AI provider in `.env`, then restart (see *AI providers* below).
-6. **Reminders (optional):** Settings → Reminders → your ntfy server; then each person's profile → ntfy topic → Test.
-   See `ntfy/server.example.yml` to run a private ntfy server.
-7. **Chores and rewards:** edit the starter set under Chores → *Manage chores*.
+```bash
+cp .env.example .env
+```
+
+Then edit `.env`. Each setting is explained inside the file. Restart Homebase after changing it.
+
+### 3. Start Homebase
+
+```bash
+npm start
+```
+
+You should see `Homebase listening on http://0.0.0.0:4830`. Leave this terminal open for now
+(step 7 makes it run on its own). Open **http://localhost:4830** in a browser on the same computer to check it works.
+
+The first start creates a **sample family** (Alex, Sam, Jordan, Riley, Casey) with starter chores and
+rewards, so the board isn't empty. You'll replace them with your own family in step 5.
+
+### 4. Open it on the tablet
+
+Find the computer's address on your network:
+
+- **Mac:** `ipconfig getifaddr en0` (if that prints nothing, try `ipconfig getifaddr en1`)
+- **Linux / Raspberry Pi:** `hostname -I` (the first number)
+
+On the tablet, open **http://THAT-ADDRESS:4830**, e.g. `http://192.168.1.50:4830`.
+
+If it doesn't load: make sure the tablet is on the same Wi-Fi, and on a Mac allow `node` when macOS asks
+about incoming connections (System Settings → Network → Firewall). Tip: reserve the computer's address in
+your router's settings so it never changes.
+
+### 5. Make it yours (in the app → Settings)
+
+Do these in order:
+
+1. **Parent PIN:** set a 4-digit PIN first. Until you do, anyone on your Wi-Fi can change settings.
+2. **Household:** rename the sample people to your family (or remove them and add your own), pick
+   colors, and mark who earns rewards. *Family* is a shared calendar, not a person.
+3. **Calendars:** in each person's profile, paste their calendar's private iCal address. For Google
+   Calendar: on a computer, open Google Calendar → ⚙ Settings → click the calendar → *Integrate calendar* →
+   copy **Secret address in iCal format**. iCloud, Outlook and other `.ics` addresses work too.
+   Put the shared family calendar on *Family*. Events refresh every 5 minutes.
+4. **Weather location:** search your city or ZIP code.
+5. **Chores and rewards:** Chores tab → *Manage chores* to replace the starter chores and rewards.
+6. **Optional extras:** Allowance (cents per point), Reminders (see *Phone reminders* below),
+   AI quick-add (see *AI providers* below) and Away from home (see below).
+
+### 6. Set up the wall tablet
+
+**iPad:** open the address in Safari → Share → *Add to Home Screen* → open Homebase from that icon
+(it runs full-screen). Then Settings → Accessibility → *Guided Access* → on; open Homebase and
+triple-click the side (or home) button to lock the iPad to it. Settings → Display & Brightness →
+Auto-Lock → *Never*.
+
+**Android / Fire tablet:** install *Fully Kiosk Browser*, set the start URL to the address, and turn on
+*Keep screen on* and *Kiosk mode*. Optionally schedule the screen off overnight (Homebase also dims to a night clock).
+
+### 7. Keep it running
+
+So Homebase starts by itself and survives restarts, stop the terminal from step 3 (Ctrl+C) and install
+it as a service:
+
+- **Mac:** copy `scripts/homebase.plist.example` to `~/Library/LaunchAgents/local.homebase.plist`,
+  replace `/PATH/TO/homebase` with your folder (run `pwd` inside it), then run
+  `launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/local.homebase.plist`.
+- **Linux / Raspberry Pi:** copy `scripts/homebase.service.example` to
+  `~/.config/systemd/user/homebase.service`, replace `/PATH/TO/homebase`, then run
+  `systemctl --user daemon-reload && systemctl --user enable --now homebase` and
+  `loginctl enable-linger "$USER"`.
+
+### Updating
+
+```bash
+cd homebase && git pull && npm run setup && npm run build
+```
+
+Then restart Homebase (Mac: `launchctl kickstart -k gui/$(id -u)/local.homebase`;
+Linux: `systemctl --user restart homebase`). Tablets pick up the new version by their nightly 3 am reload,
+or reload the page.
+
+### Troubleshooting
+
+- **"Port 4830 already in use":** Homebase is already running (perhaps as the service), or another app uses
+  the port. Set `HOMEBASE_PORT=4840` in `.env` to use a different one.
+- **The tablet shows "Unknown host":** you opened Homebase by a name rather than an address. IP addresses,
+  `localhost` and `.local` names always work; add other names to `HOMEBASE_ALLOWED_HOSTS` in `.env`.
+- **Calendar events don't appear:** make sure you pasted the *secret* iCal address (it contains
+  `private-`), then tap ↻ on the Calendar tab.
+- **Forgot the parent PIN:** stop Homebase and run
+  `sqlite3 data/family.db "DELETE FROM settings WHERE key='pin_hash'"`, then start it and set a new one.
 
 ## AI providers
 
@@ -62,14 +151,15 @@ Set these in `.env` and restart:
   it in your house.
 - A ChatGPT subscription doesn't include API access; use an API key from the provider instead.
 
-## Set up the wall tablet
+## Phone reminders (optional)
 
-**iPad:** open the URL in Safari → Share → *Add to Home Screen* → launch from the icon (full-screen).
-Settings → Accessibility → *Guided Access* on, then triple-click the side button inside Homebase to lock
-the iPad to it. Settings → Display → Auto-Lock → *Never*.
+Homebase can send each person reminders before their events, a morning summary and an afternoon chore
+nudge through [ntfy](https://ntfy.sh). Install the ntfy app on each phone, then:
 
-**Android / Fire tablet:** install *Fully Kiosk Browser*, set the start URL, enable *Keep screen on*
-and *Kiosk mode*. Optionally schedule the screen off overnight (Homebase also shows a dim night clock).
+- **Simplest:** Settings → Reminders → server `https://ntfy.sh`. In each person's profile, set a long random
+  ntfy topic (anyone who knows the topic can read it), subscribe to that topic in their ntfy app, and tap **Test**.
+- **Private:** run your own ntfy server with `ntfy/server.example.yml`, put its address in
+  `HOMEBASE_NTFY_URL` and its publish token in `HOMEBASE_NTFY_TOKEN` (in `.env`), and use that address in Settings.
 
 ## Away from home (optional)
 

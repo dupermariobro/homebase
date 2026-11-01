@@ -6,6 +6,7 @@ import crypto from 'node:crypto';
 import { execFileSync } from 'node:child_process';
 import { isValidDate } from './chores.js';
 import { aiEnabled, aiModel, extractRecipe, parseQuickAdd } from './ai.js';
+import { fetchPublicText, isPublicHttpUrl } from './netguard.js';
 
 const TIME_RE = /^([01]\d|2[0-3]):[0-5]\d$/;
 
@@ -19,7 +20,7 @@ function nextDay(dateStr) {
   return new Date(Date.parse(dateStr + 'T00:00:00Z') + 864e5).toISOString().slice(0, 10);
 }
 
-/** Local date + HH:MM → ISO instant, using the Mac's timezone (same as the family's). */
+/** Local date + HH:MM → ISO instant, using the server's timezone (set it to the family's). */
 function localIso(date, time) {
   return new Date(`${date}T${time}:00`).toISOString();
 }
@@ -52,25 +53,6 @@ function eventTimes(b) {
   return { person_id, title, start, end, all_day: 0, location: b.location || null };
 }
 
-function isPublicHttpUrl(raw) {
-  let u;
-  try {
-    u = new URL(raw);
-  } catch {
-    return false;
-  }
-  if (!['http:', 'https:'].includes(u.protocol)) return false;
-  const h = u.hostname;
-  // Recipe import fetches server-side; keep it from being pointed at the home network.
-  return !(
-    h === 'localhost' ||
-    h.endsWith('.local') ||
-    /^(127\.|10\.|192\.168\.|169\.254\.|0\.)/.test(h) ||
-    /^172\.(1[6-9]|2\d|3[01])\./.test(h) ||
-    /^100\.(6[4-9]|[7-9]\d|1[01]\d|12[0-7])\./.test(h) ||
-    h.startsWith('[')
-  );
-}
 
 /**
  * Saves an uploaded photo. Small JPEG/PNG/WebP files are stored as-is; HEIC and
@@ -150,7 +132,16 @@ export function expandLocalEvents(db, fromIso, toIso) {
   return out;
 }
 
-export function registerExtras(app, { db, parent, changed, wrap, send, fetchImpl, photoDir }) {
+/** Checks the file's own signature, not the declared type: JPEG, PNG, WebP or HEIC/HEIF. */
+export function looksLikeImage(buf) {
+  if (!Buffer.isBuffer(buf) || buf.length < 12) return false;
+  if (buf[0] === 0xff && buf[1] === 0xd8 && buf[2] === 0xff) return true;
+  if (buf.subarray(0, 8).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]))) return true;
+  if (buf.toString('latin1', 0, 4) === 'RIFF' && buf.toString('latin1', 8, 12) === 'WEBP') return true;
+  return buf.toString('latin1', 4, 8) === 'ftyp' && /^(heic|heix|hevc|heim|heis|mif1|msf1)$/.test(buf.toString('latin1', 8, 12));
+}
+
+export function registerExtras(app, { db, parent, changed, wrap, send, fetchImpl, photoDir, lookup }) {
   const json = express.json({ limit: '256kb' });
   const bigJson = express.json({ limit: '12mb' });
   const personExists = (id) => id == null || Boolean(db.prepare('SELECT 1 FROM people WHERE id = ?').get(id));
@@ -291,7 +282,7 @@ export function registerExtras(app, { db, parent, changed, wrap, send, fetchImpl
   app.post('/api/photos', express.raw({ type: PHOTO_TYPES, limit: '40mb' }), (req, res) => {
     const type = (req.get('content-type') || '').split(';')[0].trim().toLowerCase();
     const size = Buffer.isBuffer(req.body) ? req.body.length : 0;
-    if (!PHOTO_TYPES.includes(type) || size < 100) {
+    if (!PHOTO_TYPES.includes(type) || size < 100 || !looksLikeImage(req.body)) {
       console.error(`Photo upload rejected: type=${type || 'none'} bytes=${size}`);
       return res.status(400).json({ error: 'That file type isn’t supported — use a photo (JPEG, PNG, HEIC)' });
     }
@@ -322,7 +313,7 @@ export function registerExtras(app, { db, parent, changed, wrap, send, fetchImpl
     changed('photos');
     res.json({ ok: true });
   });
-  app.use('/photos', express.static(dir, { maxAge: '30d', immutable: true }));
+  app.use('/photos', express.static(dir, { maxAge: '30d', immutable: true, setHeaders: (res) => res.set('X-Content-Type-Options', 'nosniff') }));
 
   // --- recipes ----------------------------------------------------------------
   const recipeOut = (r) => ({ ...r, ingredients: JSON.parse(r.ingredients) });
@@ -360,7 +351,9 @@ export function registerExtras(app, { db, parent, changed, wrap, send, fetchImpl
     wrap(async (req, res) => {
       const { url, text } = req.body;
       if (url && !isPublicHttpUrl(url)) return res.status(400).json({ error: 'Use a regular web link (http or https)' });
-      const recipe = await extractRecipe(fetchImpl, { url, text });
+      if (!aiEnabled()) return res.status(503).json({ error: 'AI is not set up — add OPENAI_API_KEY to .env' });
+      const fetchPage = (u) => fetchPublicText(fetchImpl, u, { lookup });
+      const recipe = await extractRecipe(fetchImpl, { url, text, fetchPage });
       res.json({ ...recipe, source_url: url || null });
     })
   );

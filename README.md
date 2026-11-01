@@ -62,7 +62,8 @@ internet by a tunnel you control, e.g. [Tailscale Funnel](https://tailscale.com/
 tailscale funnel --bg --https=8443 http://127.0.0.1:4831
 ```
 
-Unlinked visitors only see a "not linked" page. To link a phone: tablet → Settings → **Away from home**
+Then put that public address in `.env` as `HOMEBASE_PUBLIC_URL` (e.g. `https://your-machine.your-tailnet.ts.net:8443`)
+and restart. Unlinked visitors only see a "not linked" page. Linking phones requires a parent PIN. To link a phone: tablet → Settings → **Away from home**
 → **Link a phone** (PIN) → scan the QR code (one-time, expires in 15 minutes) → on the phone tap
 **Link phone**, then Share → **Add to Home Screen**. **Unlink** revokes access immediately.
 Set `HOMEBASE_REMOTE_PORT=0` to disable the listener entirely.
@@ -71,15 +72,30 @@ Set `HOMEBASE_REMOTE_PORT=0` to disable the listener entirely.
 
 Homebase is built for a trusted home network. Read this before exposing anything:
 
-- **Anyone on your LAN can open the main listener (port 4830).** Don't port-forward it. Use the
-  away-from-home entrance above instead.
-- **Set a parent PIN.** It guards Settings, editing chores and rewards, redeeming rewards, and
-  un-checking chores (so points can't be farmed). Checking off chores, meals and lists stay open to
-  everyone. The PIN is forgotten after 5 minutes.
-- **Secrets stay server-side:** the OpenAI key and ntfy token live only in `.env`; calendar iCal
-  addresses are stored in the database and never sent back in full to the tablet.
+- **Trust model.** Anyone on your LAN, and every linked phone, can do everything that isn't behind
+  the parent PIN: check off chores, edit lists, meals, notes and events, upload photos, and run AI
+  quick-add (which spends your OpenAI credit). Don't port-forward port 4830; use the away-from-home
+  entrance above instead.
+- **Set a parent PIN.** It guards Settings, calendars, chores and rewards, redeeming rewards,
+  un-checking chores, and linking phones. Wrong guesses are rate-limited per device and in total.
+  The tablet forgets the PIN after 5 minutes.
+- **Linked phones** stay linked (up to 400 days) until you press **Unlink** in Settings.
+  Set `HOMEBASE_REMOTE_PORT=0` if you never want the away-from-home entrance.
+- **Browser protections.** The LAN listener only answers to IP addresses, `localhost`, and
+  `.local` / `.lan` / `.home.arpa` / `.ts.net` names (add others in `HOMEBASE_ALLOWED_HOSTS`), which
+  blocks DNS-rebinding pages. API writes must carry an `X-Homebase` header, which other websites can't
+  send, so a page a family member visits can't act on Homebase. Scripts calling the API should send
+  `X-Homebase: 1`.
+- **Outbound fetches.** Recipe import only fetches public web addresses: private and LAN addresses,
+  LAN-only names and redirects into your network are refused, and pages are size-capped.
+  Calendar (iCal) addresses can only be set with the PIN.
+- **Secrets stay server-side.** The OpenAI key and ntfy token live only in `.env`. The ntfy token is
+  only ever sent to `HOMEBASE_NTFY_URL`. Calendar addresses and ntfy topics are never returned to the
+  tablet. Don't put credentials inside the ntfy server address in Settings, because it is shown there.
+- **Photos.** Uploads must be real JPEG, PNG, WebP or HEIC files. On macOS, large and HEIC photos are
+  converted with the built-in `sips`. On Linux, upload JPEG/PNG/WebP under 4 MB (or add your own converter).
 - **Back up `data/`** (the SQLite database and photos). It holds your family's calendar links,
-  chores, and photos. It's gitignored; never commit it.
+  chores and photos. It's gitignored; never commit it.
 
 ## Development
 

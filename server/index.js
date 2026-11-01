@@ -2,7 +2,7 @@ import http from 'node:http';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { WebSocketServer } from 'ws';
-import { openDb, seed } from './db.js';
+import { openDb, seed, setSetting } from './db.js';
 import { createApp } from './app.js';
 import { syncAll } from './calendar.js';
 import { runReminders } from './reminders.js';
@@ -21,6 +21,8 @@ const REMOTE_PORT = Number(process.env.HOMEBASE_REMOTE_PORT || 4831);
 const SYNC_MS = 5 * 60 * 1000;
 
 const db = openDb(process.env.HOMEBASE_DB || path.join(root, 'data/family.db'));
+// The public address of the away-from-home entrance (e.g. your Tailscale Funnel URL).
+if (process.env.HOMEBASE_PUBLIC_URL) setSetting(db, 'public_url', process.env.HOMEBASE_PUBLIC_URL);
 if (seed(db)) console.log('Seeded household and starter chores');
 
 const server = http.createServer();

@@ -8,7 +8,7 @@ const TIMEOUT_MS = 90000;
 const ORIGINAL_TYPES = ['image/jpeg', 'image/png', 'image/webp', 'image/heic', 'image/heif'];
 
 function logToServer(message) {
-  fetch('/api/client-log', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ message }) }).catch(() => {});
+  fetch('/api/client-log', { method: 'POST', headers: { 'content-type': 'application/json', 'x-homebase': '1' }, body: JSON.stringify({ message }) }).catch(() => {});
 }
 
 function guessType(file) {
@@ -34,7 +34,7 @@ async function uploadOne(file, cancelSignal) {
   const onCancel = () => ctrl.abort();
   cancelSignal.addEventListener('abort', onCancel);
   try {
-    const res = await fetch('/api/photos', { method: 'POST', headers: { 'content-type': type }, body, signal: ctrl.signal });
+    const res = await fetch('/api/photos', { method: 'POST', headers: { 'content-type': type, 'x-homebase': '1' }, body, signal: ctrl.signal });
     const data = await res.json().catch(() => ({}));
     if (!res.ok) throw new Error(data.error || `Upload failed (${res.status})`);
     return data;

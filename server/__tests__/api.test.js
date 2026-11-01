@@ -23,7 +23,7 @@ after(() => server.close());
 const api = async (method, url, body, pin) => {
   const res = await fetch(base + url, {
     method,
-    headers: { 'content-type': 'application/json', ...(pin ? { 'x-parent-pin': pin } : {}) },
+    headers: { 'content-type': 'application/json', 'x-homebase': '1', ...(pin ? { 'x-parent-pin': pin } : {}) },
     body: body ? JSON.stringify(body) : undefined,
   });
   return { status: res.status, body: await res.json() };

@@ -65,6 +65,8 @@ export function rateLimiter({ max, windowMs }) {
     const now = Date.now();
     const h = hits.get(key);
     if (!h || now - h.start > windowMs) {
+      if (hits.size > 1000) for (const [k, v] of hits) if (now - v.start > windowMs) hits.delete(k);
+      if (hits.size > 1000) hits.clear();
       hits.set(key, { start: now, n: 1 });
       return true;
     }
@@ -73,9 +75,15 @@ export function rateLimiter({ max, windowMs }) {
   };
 }
 
-export function clientIp(req) {
-  // Behind Funnel the socket is loopback; Tailscale passes the real client in X-Forwarded-For.
-  return (req.get?.('x-forwarded-for') || req.headers?.['x-forwarded-for'] || '').split(',')[0].trim() || req.socket?.remoteAddress || '?';
+export function clientIp(req, behindProxy = false) {
+  const sock = req.socket?.remoteAddress || '?';
+  // Only the remote listener sits behind a tunnel (Funnel), which connects from loopback and
+  // appends the real client to X-Forwarded-For. Anything a client wrote earlier in that header
+  // is untrusted, so use the last value; on the LAN listener ignore the header entirely.
+  const loopback = sock === '127.0.0.1' || sock === '::1' || sock === '::ffff:127.0.0.1';
+  if (!behindProxy || !loopback) return sock;
+  const xff = String(req.get?.('x-forwarded-for') || req.headers?.['x-forwarded-for'] || '').split(',').map((s) => s.trim()).filter(Boolean);
+  return xff.at(-1) || sock;
 }
 
 const PAIR_PAGE = `<!doctype html><html lang="en"><head><meta charset="utf-8">
@@ -92,7 +100,7 @@ history.replaceState(null, '', '/pair');
 const msg = document.getElementById('msg');
 if (!code) { msg.textContent = 'This link is missing its code. Ask for a new one from Homebase Settings.'; msg.className = 'err'; }
 document.getElementById('go').onclick = async () => {
-  const r = await fetch('/api/pair/redeem', { method: 'POST', headers: { 'content-type': 'application/json' },
+  const r = await fetch('/api/pair/redeem', { method: 'POST', headers: { 'content-type': 'application/json', 'x-homebase': '1' },
     body: JSON.stringify({ code, name: document.getElementById('name').value || 'Phone' }) });
   const j = await r.json().catch(() => ({}));
   if (r.ok) { msg.textContent = 'Linked! Opening Homebase…'; location.replace('/'); }
@@ -117,7 +125,7 @@ export function remoteGate(db) {
     res.set('Referrer-Policy', 'no-referrer');
     if (req.path === '/pair') return res.type('html').set('Cache-Control', 'no-store').send(PAIR_PAGE);
     if (req.path === '/api/pair/redeem' && req.method === 'POST') {
-      if (!redeemLimit(clientIp(req))) return res.status(429).json({ error: 'Too many tries. Wait 15 minutes.' });
+      if (!redeemLimit(clientIp(req, true))) return res.status(429).json({ error: 'Too many tries. Wait 15 minutes.' });
       const result = redeemPairCode(db, req.body?.code, req.body?.name);
       if (result.error) return res.status(result.status).json({ error: result.error });
       res.set('Set-Cookie', sessionCookie(result.session));

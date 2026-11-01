@@ -32,7 +32,7 @@ before(async () => {
   process.env.OPENAI_API_KEY = 'test-key';
   db = openDb(':memory:');
   seed(db);
-  const app = createApp({ db, fetchImpl: fakeFetch, photoDir });
+  const app = createApp({ db, fetchImpl: fakeFetch, photoDir, lookup: async () => [{ address: '93.184.215.14', family: 4 }] });
   await new Promise((r) => (server = app.listen(0, r)));
   base = `http://127.0.0.1:${server.address().port}`;
 });
@@ -44,7 +44,7 @@ after(() => {
 const api = async (method, url, body, pin) => {
   const res = await fetch(base + url, {
     method,
-    headers: { 'content-type': 'application/json', ...(pin ? { 'x-parent-pin': pin } : {}) },
+    headers: { 'content-type': 'application/json', 'x-homebase': '1', ...(pin ? { 'x-parent-pin': pin } : {}) },
     body: body ? JSON.stringify(body) : undefined,
   });
   return { status: res.status, body: await res.json() };
@@ -180,8 +180,8 @@ test('recipe import refuses local network links and extracts from public pages',
 });
 
 test('photos upload as raw images and delete with the PIN', async () => {
-  const jpeg = Buffer.alloc(500, 1);
-  const up = await fetch(`${base}/api/photos`, { method: 'POST', headers: { 'content-type': 'image/jpeg' }, body: jpeg }).then((r) => r.json());
+  const jpeg = Buffer.concat([Buffer.from([0xff, 0xd8, 0xff, 0xe0]), Buffer.alloc(496, 1)]);
+  const up = await fetch(`${base}/api/photos`, { method: 'POST', headers: { 'content-type': 'image/jpeg', 'x-homebase': '1' }, body: jpeg }).then((r) => r.json());
   assert.ok(fs.existsSync(path.join(photoDir, up.filename)));
   const served = await fetch(`${base}/photos/${up.filename}`);
   assert.equal(served.status, 200);
@@ -229,7 +229,7 @@ test('HEIC uploads are converted to JPEG on the Mac', { skip: process.platform !
   );
   fs.writeFileSync(src, png);
   execFileSync('/usr/bin/sips', ['-s', 'format', 'heic', src, '--out', heic], { stdio: 'pipe' });
-  const res = await fetch(`${base}/api/photos`, { method: 'POST', headers: { 'content-type': 'image/heic' }, body: fs.readFileSync(heic) });
+  const res = await fetch(`${base}/api/photos`, { method: 'POST', headers: { 'content-type': 'image/heic', 'x-homebase': '1' }, body: fs.readFileSync(heic) });
   const body = await res.json();
   assert.equal(res.status, 200, JSON.stringify(body));
   assert.match(body.filename, /\.jpg$/);
@@ -239,7 +239,7 @@ test('HEIC uploads are converted to JPEG on the Mac', { skip: process.platform !
 });
 
 test('unsupported upload types get a clear error', async () => {
-  const r = await fetch(`${base}/api/photos`, { method: 'POST', headers: { 'content-type': 'application/pdf' }, body: Buffer.alloc(500) });
+  const r = await fetch(`${base}/api/photos`, { method: 'POST', headers: { 'content-type': 'application/pdf', 'x-homebase': '1' }, body: Buffer.alloc(500) });
   assert.equal(r.status, 400);
   assert.match((await r.json()).error, /supported/);
 });

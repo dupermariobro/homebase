@@ -23,22 +23,37 @@ export function setPin(db, pin) {
   setSetting(db, 'pin_hash', pin ? hashPin(pin) : null);
 }
 
-// Express middleware: parent-only routes send the PIN in the X-Parent-Pin header.
-export function requirePin(db) {
+/**
+ * Wrong-PIN limiter shared by every PIN check in one app: 8 misses per client and 40 in
+ * total per 15 minutes, so neither one client nor many spoofed ones can brute-force it.
+ */
+export function createPinGuard({ perClient = 8, total = 40, windowMs = 15 * 60 * 1000 } = {}) {
   const failures = new Map(); // client → { n, start }
-  const WINDOW = 15 * 60 * 1000;
+  let all = { n: 0, start: Date.now() };
+  const live = (f) => f && Date.now() - f.start < windowMs;
+  return {
+    blocked(key) {
+      return (live(all) && all.n >= total) || (live(failures.get(key)) && failures.get(key).n >= perClient);
+    },
+    fail(key) {
+      if (!live(all)) all = { n: 0, start: Date.now() };
+      all.n++;
+      if (failures.size > 1000) for (const [k, f] of failures) if (!live(f)) failures.delete(k);
+      if (failures.size > 1000) failures.clear();
+      const f = live(failures.get(key)) ? failures.get(key) : { n: 0, start: Date.now() };
+      f.n++;
+      failures.set(key, f);
+    },
+  };
+}
+
+// Express middleware: parent-only routes send the PIN in the X-Parent-Pin header.
+export function requirePin(db, guard = createPinGuard(), clientKey = (req) => req.socket.remoteAddress) {
   return (req, res, next) => {
-    const key = (req.get('x-forwarded-for') || '').split(',')[0].trim() || req.socket.remoteAddress;
-    const f = failures.get(key);
-    if (f && Date.now() - f.start < WINDOW && f.n >= 8) {
-      return res.status(429).json({ error: 'Too many wrong PINs. Wait 15 minutes.' });
-    }
+    const key = clientKey(req);
+    if (guard.blocked(key)) return res.status(429).json({ error: 'Too many wrong PINs. Wait 15 minutes.' });
     if (verifyPin(req.get('x-parent-pin'), getSetting(db, 'pin_hash'))) return next();
-    if (req.get('x-parent-pin')) {
-      const cur = f && Date.now() - f.start < WINDOW ? f : { n: 0, start: Date.now() };
-      cur.n++;
-      failures.set(key, cur);
-    }
+    if (req.get('x-parent-pin')) guard.fail(key);
     res.status(401).json({ error: 'Parent PIN required', needsPin: true });
   };
 }

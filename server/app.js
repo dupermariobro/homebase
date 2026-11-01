@@ -1,4 +1,5 @@
 import express from 'express';
+import net from 'node:net';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -17,12 +18,12 @@ import {
   pendingApprovals,
   streaks,
 } from './chores.js';
-import { requirePin, verifyPin, pinIsSet, setPin } from './pin.js';
+import { requirePin, verifyPin, pinIsSet, setPin, createPinGuard } from './pin.js';
 import { eventsBetween, syncAll } from './calendar.js';
 import { getWeather } from './weather.js';
 import { registerExtras, expandLocalEvents } from './extras.js';
 import { sendNtfy } from './reminders.js';
-import { remoteGate, createPairCode, clientIp, rateLimiter } from './remote.js';
+import { remoteGate, createPairCode, clientIp } from './remote.js';
 import { aiEnabled, shoppingItems } from './ai.js';
 import { addToList, ruleBasedShopping } from './shopping.js';
 
@@ -204,14 +205,37 @@ async function notifyPendingApproval(db, fetchImpl, choreId, date) {
   }
 }
 
-export function createApp({ db, broadcast = () => {}, fetchImpl = fetch, staticDir, photoDir, remote = false } = {}) {
+// Names the tablet may use to reach the LAN listener. Anything else is refused, which stops
+// DNS-rebinding pages (attacker.example → 192.168.x.x) from reading the family's data.
+function hostAllowed(hostname = '') {
+  const h = hostname.replace(/^\[|\]$/g, '').toLowerCase();
+  const extra = (process.env.HOMEBASE_ALLOWED_HOSTS || '').split(',').map((s) => s.trim().toLowerCase()).filter(Boolean);
+  return (
+    net.isIP(h) !== 0 || h === 'localhost' || extra.includes(h) ||
+    /\.(local|lan|home\.arpa|ts\.net)$/.test(h)
+  );
+}
+
+export function createApp({ db, broadcast = () => {}, fetchImpl = fetch, staticDir, photoDir, remote = false, lookup } = {}) {
   const app = express();
   // AI requests carry a photo, so they get their own larger body limit (see extras.js).
   const smallJson = express.json({ limit: '256kb' });
   app.use((req, res, next) => (req.path.startsWith('/api/ai/') || req.path === '/api/photos' ? next() : smallJson(req, res, next)));
   // The public listener (Tailscale Funnel) only lets paired devices through.
+  // Writes must carry X-Homebase. Other websites can't add custom headers without CORS (which
+  // Homebase never grants), so this blocks cross-site requests from a family member's browser.
+  app.use((req, res, next) => {
+    if (!remote && !hostAllowed(req.hostname)) return res.status(403).json({ error: 'Unknown host — add it to HOMEBASE_ALLOWED_HOSTS' });
+    if (req.path.startsWith('/api/') && !['GET', 'HEAD', 'OPTIONS'].includes(req.method) && !req.get('x-homebase')) {
+      return res.status(403).json({ error: 'Missing X-Homebase header' });
+    }
+    next();
+  });
   if (remote) app.use(remoteGate(db));
-  const parent = requirePin(db);
+  // Only the remote listener sits behind a proxy whose X-Forwarded-For can be trusted.
+  const clientKey = (req) => clientIp(req, remote);
+  const pinGuard = createPinGuard();
+  const parent = requirePin(db, pinGuard, clientKey);
   const changed = (topic) => broadcast({ type: 'changed', topic });
   const wrap = (fn) => (req, res, next) => Promise.resolve(fn(req, res, next)).catch(next);
   const send = (res, result) =>
@@ -221,10 +245,11 @@ export function createApp({ db, broadcast = () => {}, fetchImpl = fetch, staticD
 
   // --- auth -------------------------------------------------------------
   app.get('/api/auth', (_req, res) => res.json({ pinSet: pinIsSet(db) }));
-  const pinTries = rateLimiter({ max: 8, windowMs: 15 * 60 * 1000 });
   app.post('/api/auth/check', (req, res) => {
+    const key = clientKey(req);
+    if (pinGuard.blocked(key)) return res.status(429).json({ error: 'Too many wrong PINs. Wait 15 minutes.' });
     const ok = verifyPin(req.body.pin, getSetting(db, 'pin_hash'));
-    if (!ok && !pinTries(clientIp(req))) return res.status(429).json({ error: 'Too many wrong PINs. Wait 15 minutes.' });
+    if (!ok) pinGuard.fail(key);
     res.json({ ok });
   });
 
@@ -236,6 +261,8 @@ export function createApp({ db, broadcast = () => {}, fetchImpl = fetch, staticD
     });
   });
   app.post('/api/devices/pair', parent, (_req, res) => {
+    // A linked phone can do anything the tablet can, from anywhere, so linking needs a PIN.
+    if (!pinIsSet(db)) return res.status(400).json({ error: 'Set a parent PIN before linking phones' });
     const base = getSetting(db, 'public_url');
     if (!base) return res.status(400).json({ error: 'Away-from-home access isn’t turned on yet' });
     const { code, expiresAt } = createPairCode(db);
@@ -598,7 +625,7 @@ export function createApp({ db, broadcast = () => {}, fetchImpl = fetch, staticD
     wrap(async (_req, res) => res.json(await getWeather(db, fetchImpl)))
   );
 
-  registerExtras(app, { db, parent, changed, wrap, send, fetchImpl, photoDir });
+  registerExtras(app, { db, parent, changed, wrap, send, fetchImpl, photoDir, lookup });
 
   app.post(
     '/api/reminders/test',
@@ -623,8 +650,8 @@ export function createApp({ db, broadcast = () => {}, fetchImpl = fetch, staticD
   );
 
   // --- TV ambient screen (read-only idle display for the wall tablet / TVs) ----
-  // Self-hosted Ink fonts (IBM Plex + Shippori Mincho), so the screen matches the Mission
-  // Control look without a network round-trip on a Pi / TV browser.
+  // Self-hosted fonts (IBM Plex + Shippori Mincho), so the screen needs no network
+  // round-trip on a Pi / TV browser.
   app.use('/tv/fonts', express.static(FONTS_DIR, { maxAge: '30d', immutable: true }));
   app.get(
     '/api/tv/ambient',

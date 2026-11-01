@@ -128,13 +128,9 @@ export async function parseQuickAdd(fetchImpl, { text, image, images = [], conte
   return out.items || [];
 }
 
-export async function extractRecipe(fetchImpl, { text, url }) {
+export async function extractRecipe(fetchImpl, { text, url, fetchPage }) {
   let source = text || '';
-  if (url) {
-    const res = await fetchImpl(url, { signal: AbortSignal.timeout(15000), headers: { 'user-agent': 'Mozilla/5.0 Homebase' } });
-    if (!res.ok) throw Object.assign(new Error(`Couldn’t open that page (${res.status})`), { status: 400 });
-    source = htmlToText(await res.text());
-  }
+  if (url) source = htmlToText(await fetchPage(url));
   if (!source.trim()) throw Object.assign(new Error('Paste a recipe link or the recipe text'), { status: 400 });
   return complete(
     fetchImpl,

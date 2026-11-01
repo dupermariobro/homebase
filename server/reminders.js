@@ -19,8 +19,11 @@ function claim(db, key) {
 
 export async function sendNtfy(fetchImpl, baseUrl, topic, { title, message, tags, click }) {
   const headers = { Title: title, Tags: tags || 'house', Priority: '3' };
-  // The family ntfy denies anonymous publishing; Homebase signs with its publish-only token.
-  if (process.env.HOMEBASE_NTFY_TOKEN) headers.Authorization = `Bearer ${process.env.HOMEBASE_NTFY_TOKEN}`;
+  // A private ntfy denies anonymous publishing; Homebase signs with its publish-only token,
+  // but only toward HOMEBASE_NTFY_URL, so a changed setting can't send the token elsewhere.
+  const token = process.env.HOMEBASE_NTFY_TOKEN;
+  const pinned = process.env.HOMEBASE_NTFY_URL;
+  if (token && pinned && new URL(baseUrl).origin === new URL(pinned).origin) headers.Authorization = `Bearer ${token}`;
   if (click) headers.Click = click;
   const res = await fetchImpl(`${baseUrl.replace(/\/$/, '')}/${encodeURIComponent(topic)}`, {
     method: 'POST',

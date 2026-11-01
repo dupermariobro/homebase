@@ -60,7 +60,7 @@ test('ambient page is served as self-contained HTML', async () => {
 test('a Homebase announcement shows up in the ambient notes', async () => {
   await fetch(base + '/api/notes', {
     method: 'POST',
-    headers: { 'content-type': 'application/json' },
+    headers: { 'content-type': 'application/json', 'x-homebase': '1' },
     body: JSON.stringify({ text: 'Soccer carpool moved to 5pm' }),
   });
   const d = await (await fetch(base + '/api/tv/ambient')).json();

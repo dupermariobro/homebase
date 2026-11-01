@@ -25,7 +25,7 @@ export async function api(method, url, body) {
   for (let attempt = 0; attempt < 3; attempt++) {
     const res = await fetch(url, {
       method,
-      headers: { 'content-type': 'application/json', ...(pin ? { 'x-parent-pin': pin } : {}) },
+      headers: { 'content-type': 'application/json', 'x-homebase': '1', ...(pin ? { 'x-parent-pin': pin } : {}) },
       body: body !== undefined ? JSON.stringify(body) : undefined,
     });
     const data = await res.json().catch(() => ({}));

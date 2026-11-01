@@ -101,9 +101,9 @@ Homebase is built for a trusted home network. Read this before exposing anything
   Set `HOMEBASE_REMOTE_PORT=0` if you never want the away-from-home entrance.
 - **Browser protections.** The LAN listener only answers to IP addresses, `localhost`, and
   `.local` / `.lan` / `.home.arpa` / `.ts.net` names (add others in `HOMEBASE_ALLOWED_HOSTS`), which
-  blocks DNS-rebinding pages. API writes must carry an `X-Homebase` header, which other websites can't
-  send, so a page a family member visits can't act on Homebase. Scripts calling the API should send
-  `X-Homebase: 1`.
+  blocks DNS-rebinding pages. API writes must send JSON (or an image) or an `X-Homebase: 1` header,
+  which other websites can't do without permission Homebase never grants, so a page a family member
+  visits can't act on Homebase.
 - **Outbound fetches.** Recipe import only fetches public web addresses: private and LAN addresses,
   LAN-only names and redirects into your network are refused, and pages are size-capped.
   Calendar (iCal) addresses can only be set with the PIN.

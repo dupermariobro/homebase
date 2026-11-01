@@ -222,12 +222,15 @@ export function createApp({ db, broadcast = () => {}, fetchImpl = fetch, staticD
   const smallJson = express.json({ limit: '256kb' });
   app.use((req, res, next) => (req.path.startsWith('/api/ai/') || req.path === '/api/photos' ? next() : smallJson(req, res, next)));
   // The public listener (Tailscale Funnel) only lets paired devices through.
-  // Writes must carry X-Homebase. Other websites can't add custom headers without CORS (which
-  // Homebase never grants), so this blocks cross-site requests from a family member's browser.
+  // Cross-site writes: another website can only send a "simple" request (no custom headers,
+  // and only form/text bodies) without a CORS preflight, which Homebase never grants. So a
+  // write is accepted with an X-Homebase header or a non-simple body type (JSON, images).
+  const SIMPLE_TYPES = ['', 'application/x-www-form-urlencoded', 'multipart/form-data', 'text/plain'];
   app.use((req, res, next) => {
     if (!remote && !hostAllowed(req.hostname)) return res.status(403).json({ error: 'Unknown host — add it to HOMEBASE_ALLOWED_HOSTS' });
-    if (!['GET', 'HEAD', 'OPTIONS'].includes(req.method) && !req.get('x-homebase')) {
-      return res.status(403).json({ error: 'Missing X-Homebase header' });
+    const type = (req.get('content-type') || '').split(';')[0].trim().toLowerCase();
+    if (!['GET', 'HEAD', 'OPTIONS'].includes(req.method) && !req.get('x-homebase') && SIMPLE_TYPES.includes(type)) {
+      return res.status(403).json({ error: 'Send X-Homebase: 1 (or a JSON body) with API writes' });
     }
     next();
   });

@@ -104,6 +104,15 @@ test('wrong PIN guesses are rate limited, even with a forged X-Forwarded-For', a
 });
 
 test("the X-Homebase check can't be dodged with an upper-case path", async () => {
-  const r = await fetch(`${homeUrl}/API/notes`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: '{"text":"x"}' });
+  const r = await fetch(`${homeUrl}/API/notes`, { method: 'POST', headers: { 'content-type': 'text/plain' }, body: '{"text":"x"}' });
   assert.equal(r.status, 403);
+});
+
+test('JSON writes from older tablet builds still work without the header', async () => {
+  const r = await fetch(`${homeUrl}/api/notes`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ text: 'hi' }) });
+  assert.notEqual(r.status, 403);
+  const form = await fetch(`${homeUrl}/api/notes`, { method: 'POST', headers: { 'content-type': 'application/x-www-form-urlencoded' }, body: 'text=x' });
+  assert.equal(form.status, 403);
+  const bare = await fetch(`${homeUrl}/api/tasks/1/done`, { method: 'POST' });
+  assert.equal(bare.status, 403);
 });

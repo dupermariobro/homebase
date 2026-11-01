@@ -222,15 +222,19 @@ export function createApp({ db, broadcast = () => {}, fetchImpl = fetch, staticD
   const smallJson = express.json({ limit: '256kb' });
   app.use((req, res, next) => (req.path.startsWith('/api/ai/') || req.path === '/api/photos' ? next() : smallJson(req, res, next)));
   // The public listener (Tailscale Funnel) only lets paired devices through.
-  // Cross-site writes: another website can only send a "simple" request (no custom headers,
-  // and only form/text bodies) without a CORS preflight, which Homebase never grants. So a
-  // write is accepted with an X-Homebase header or a non-simple body type (JSON, images).
-  const SIMPLE_TYPES = ['', 'application/x-www-form-urlencoded', 'multipart/form-data', 'text/plain'];
+  // Cross-site writes: other websites can't send custom headers or JSON/image bodies without a
+  // CORS preflight, which Homebase never grants. So a write needs X-Homebase, or one of the body
+  // types Homebase actually consumes (allowlist). Browsers that label a request cross-site are
+  // refused outright as a second layer.
+  const PREFLIGHTED = /^(application\/json|image\/(jpeg|png|webp|heic|heif))$/;
   app.use((req, res, next) => {
     if (!remote && !hostAllowed(req.hostname)) return res.status(403).json({ error: 'Unknown host — add it to HOMEBASE_ALLOWED_HOSTS' });
-    const type = (req.get('content-type') || '').split(';')[0].trim().toLowerCase();
-    if (!['GET', 'HEAD', 'OPTIONS'].includes(req.method) && !req.get('x-homebase') && SIMPLE_TYPES.includes(type)) {
-      return res.status(403).json({ error: 'Send X-Homebase: 1 (or a JSON body) with API writes' });
+    if (!['GET', 'HEAD', 'OPTIONS'].includes(req.method)) {
+      const type = (req.get('content-type') || '').split(';')[0].trim().toLowerCase();
+      if (req.get('sec-fetch-site') === 'cross-site') return res.status(403).json({ error: 'Cross-site requests are not allowed' });
+      if (!req.get('x-homebase') && !PREFLIGHTED.test(type)) {
+        return res.status(403).json({ error: 'Send X-Homebase: 1 (or a JSON body) with API writes' });
+      }
     }
     next();
   });

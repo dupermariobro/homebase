@@ -116,3 +116,10 @@ test('JSON writes from older tablet builds still work without the header', async
   const bare = await fetch(`${homeUrl}/api/tasks/1/done`, { method: 'POST' });
   assert.equal(bare.status, 403);
 });
+
+test('writes a browser marks cross-site are refused, and odd body types need the header', async () => {
+  const xs = await fetch(`${homeUrl}/api/notes`, { method: 'POST', headers: { 'content-type': 'application/json', 'sec-fetch-site': 'cross-site' }, body: '{"text":"x"}' });
+  assert.equal(xs.status, 403);
+  const odd = await fetch(`${homeUrl}/api/notes`, { method: 'POST', headers: { 'content-type': 'application/xml' }, body: '<x/>' });
+  assert.equal(odd.status, 403);
+});

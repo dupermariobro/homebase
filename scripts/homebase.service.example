@@ -1,0 +1,15 @@
+# Linux (systemd --user): keep Homebase running.
+# Replace /PATH/TO/homebase, save as ~/.config/systemd/user/homebase.service, then:
+#   systemctl --user daemon-reload && systemctl --user enable --now homebase
+#   loginctl enable-linger "$USER"   # keep it running when you're logged out
+[Unit]
+Description=Homebase family hub
+After=network-online.target
+
+[Service]
+WorkingDirectory=/PATH/TO/homebase
+ExecStart=/PATH/TO/homebase/scripts/serve.sh
+Restart=on-failure
+
+[Install]
+WantedBy=default.target

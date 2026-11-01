@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!-- macOS: keep Homebase running at login.
+     Replace /PATH/TO/homebase, save as ~/Library/LaunchAgents/local.homebase.plist, then:
+     launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/local.homebase.plist -->
+<plist version="1.0">
+<dict>
+  <key>Label</key><string>local.homebase</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>/PATH/TO/homebase/scripts/serve.sh</string>
+  </array>
+  <key>WorkingDirectory</key><string>/PATH/TO/homebase</string>
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>PATH</key><string>/usr/sbin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin</string>
+  </dict>
+  <key>RunAtLoad</key><true/>
+  <key>KeepAlive</key><true/>
+  <key>StandardOutPath</key><string>/tmp/homebase.log</string>
+  <key>StandardErrorPath</key><string>/tmp/homebase.error.log</string>
+</dict>
+</plist>

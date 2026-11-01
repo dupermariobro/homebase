@@ -1,0 +1,10 @@
+node_modules/
+client/node_modules/
+client/dist/
+.env
+data/
+ntfy/*.db*
+ntfy/server.yml
+ntfy/ntfy-server
+.DS_Store
+*.log

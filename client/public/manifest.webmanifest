@@ -1,0 +1,10 @@
+{
+  "name": "Homebase",
+  "short_name": "Homebase",
+  "display": "fullscreen",
+  "orientation": "landscape",
+  "background_color": "#f6f3ee",
+  "theme_color": "#f6f3ee",
+  "start_url": "/",
+  "icons": [{ "src": "/icon.svg", "sizes": "any", "type": "image/svg+xml" }]
+}

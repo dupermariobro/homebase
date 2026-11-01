@@ -1,0 +1,28 @@
+# Optional private ntfy server for Homebase reminders.
+# Copy to ntfy/server.yml, replace the placeholders, and run: ntfy serve --config ntfy/server.yml
+# To reach phones away from home, publish 127.0.0.1:2587 with a tunnel you control
+# (for example Tailscale Funnel) and put that public URL in base-url.
+base-url: "https://ntfy.example.com"
+listen-http: "127.0.0.1:2587"
+behind-proxy: true
+
+cache-file: "./ntfy/cache.db"
+cache-duration: "24h"
+auth-file: "./ntfy/user.db"
+# Nobody can read or write anything unless explicitly granted.
+auth-default-access: "deny-all"
+
+# iPhones get instant push via Apple, which only works through ntfy.sh. With this set,
+# ntfy.sh receives only an anonymous "poll" signal (a hash of the topic) — never the
+# message text. The phone then fetches the actual message from this server.
+upstream-base-url: "https://ntfy.sh"
+
+enable-signup: false
+enable-login: true
+web-root: "disable"
+
+# Then create a publish-only user for Homebase and one read-only topic per person, e.g.:
+#   ntfy user add homebase
+#   ntfy access homebase 'hb-*' write-only
+#   ntfy token add homebase            # → HOMEBASE_NTFY_TOKEN in .env
+#   ntfy access everyone 'hb-<random-per-person>' read-only

@@ -245,14 +245,20 @@ export function createApp({ db, broadcast = () => {}, fetchImpl = fetch, staticD
 
   // --- auth -------------------------------------------------------------
   app.get('/api/auth', (_req, res) => res.json({ pinSet: pinIsSet(db) }));
-  app.post('/api/auth/check', (req, res) => {
+  app.post('/api/auth/check', (req, res, next) => {
     const key = clientKey(req);
     if (pinGuard.blocked(key)) return res.status(429).json({ error: 'Too many wrong PINs. Wait 15 minutes.' });
-    pinGuard.pace(() => {
-      const ok = verifyPin(req.body.pin, getSetting(db, 'pin_hash'));
-      if (!ok) pinGuard.fail(key);
-      res.json({ ok });
-    });
+    const queued = pinGuard.pace(
+      key,
+      (blocked) => {
+        if (blocked) return res.status(429).json({ error: 'Too many wrong PINs. Wait 15 minutes.' });
+        const ok = verifyPin(req.body?.pin, getSetting(db, 'pin_hash'));
+        if (!ok) pinGuard.fail(key);
+        res.json({ ok });
+      },
+      next
+    );
+    if (!queued) res.status(429).json({ error: 'Too many PIN checks right now. Try again in a minute.' });
   });
 
   // --- away-from-home devices ---------------------------------------------------

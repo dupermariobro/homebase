@@ -74,11 +74,26 @@ test('the guarded connection refuses a name that resolves privately at connect t
 
 test('a guessing swarm slows PIN checks but never locks the family out', async () => {
   const { createPinGuard } = await import('../pin.js');
-  const guard = createPinGuard({ perClient: 8, total: 3, slowMs: 30 });
+  const guard = createPinGuard({ perClient: 8, total: 3, slowMs: 30, maxQueue: 2 });
   for (let i = 0; i < 3; i++) guard.fail(`attacker-${i}`);
   assert.equal(guard.blocked('tablet'), false);
   const t0 = Date.now();
-  const ran = await guard.pace(() => 'checked');
-  assert.equal(ran, 'checked');
+  const ran = new Promise((resolve) => assert.equal(guard.pace('tablet', (blocked) => resolve(blocked), assert.fail), true));
+  // One waiting check per client, and the queue is capped.
+  assert.equal(guard.pace('tablet', () => {}, assert.fail), false);
+  assert.equal(guard.pace('attacker-9', () => {}, () => {}), true);
+  assert.equal(guard.pace('attacker-10', () => {}, () => {}), false);
+  assert.equal(await ran, false);
   assert.ok(Date.now() - t0 >= 25);
+});
+
+test('a client blocked while queued is refused when its turn comes, and errors are contained', async () => {
+  const { createPinGuard } = await import('../pin.js');
+  const guard = createPinGuard({ perClient: 1, total: 1, slowMs: 10 });
+  guard.fail('x');
+  const result = new Promise((resolve) => guard.pace('y', (blocked) => resolve(blocked), assert.fail));
+  guard.fail('y'); // y gets blocked while it waits
+  assert.equal(await result, true);
+  const err = new Promise((resolve) => guard.pace('z', () => { throw new Error('boom'); }, resolve));
+  assert.equal((await err).message, 'boom');
 });

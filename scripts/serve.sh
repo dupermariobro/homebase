@@ -2,6 +2,10 @@
 # Run the Homebase server with auto-restart on crash.
 cd "$(dirname "$0")/.." || exit 1
 
+# The port can also come from .env (the server reads that file itself; this check runs first).
+if [ -z "${HOMEBASE_PORT:-}" ] && [ -f .env ]; then
+  HOMEBASE_PORT="$(sed -nE 's/^HOMEBASE_PORT=([0-9]+).*/\1/p' .env | tail -n 1)"
+fi
 PORT="${HOMEBASE_PORT:-4830}"
 NODE_BIN="${NODE_BIN:-$(command -v node 2>/dev/null || true)}"
 [ -z "$NODE_BIN" ] && [ -x /opt/homebrew/bin/node ] && NODE_BIN="/opt/homebrew/bin/node"
